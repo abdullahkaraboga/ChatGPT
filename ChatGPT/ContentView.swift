@@ -6,17 +6,20 @@
 //
 
 import SwiftUI
+import Combine
 
 struct ContentView: View {
 
-    @State var chatMessage: [ChatMessage] = ChatMessage.sampleMessages
+    @State var chatMessages: [ChatMessage] = []
     @State var messageText: String = ""
+    let openAIService = OpenAIService()
+    @State var cancellables = Set<AnyCancellable>()
 
     var body: some View {
         VStack {
             ScrollView {
                 LazyVStack {
-                    ForEach(chatMessage, id: \.id) { messageIndex in
+                    ForEach(chatMessages, id: \.id) { messageIndex in
                         messageView(message: messageIndex)
                     }
                 }
@@ -41,12 +44,9 @@ struct ContentView: View {
             }
 
         }.padding()
+
     }
 
-    func sendMessage() {
-        messageText = ""
-        print(messageText)
-    }
 
     func messageView(message: ChatMessage) -> some View {
         HStack {
@@ -59,7 +59,26 @@ struct ContentView: View {
             if message.sender == .gpt { Spacer() }
         }
     }
+
+
+    func sendMessage() {
+        let myMessage = ChatMessage(id: UUID().uuidString, content: messageText, dataCreated: Date(), sender: .me)
+        chatMessages.append(myMessage)
+        openAIService.sendMessage(message: messageText).sink { completion in
+
+        } receiveValue: { response in
+            guard let textResponse = response.choices.first?.text.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            let gptMessage = ChatMessage(id: response.id, content: textResponse, dataCreated: Date(), sender: .gpt)
+            chatMessages.append(gptMessage)
+
+        }
+            .store(in: &cancellables)
+
+        messageText = ""
+
+    }
 }
+
 
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
@@ -72,6 +91,7 @@ struct ChatMessage {
     let content: String
     let dataCreated: Date
     let sender: MessageSender
+    
 }
 
 enum MessageSender {
